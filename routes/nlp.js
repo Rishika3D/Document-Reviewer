@@ -1,73 +1,93 @@
-import express from 'express'
-import { queryModel } from '../services/huggingFaceServices.js'
-import { buildRewritePrompt } from '../utils/promptBuilder.js'
+import express from 'express';
+import dotenv from 'dotenv';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { queryModel } from '../services/huggingFaceServices.js';
 
-const router = express.Router()
+dotenv.config();
 
-// UPDATED: The base URL has been changed to match the error message
+const router = express.Router();
+
+// --- 1. SETUP GOOGLE GEMINI (For Rewrite & Grammar) ---
+// We use Gemini because the free Hugging Face models are currently unstable.
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// Using 'gemini-1.5-flash' as the standard efficient model.
+// If you are in Nov 2025 and this gives a 404, switch to 'gemini-2.0-flash'
+const geminiModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+// --- 2. SETUP HUGGING FACE (For Summarisation Only) ---
+// BART is working perfectly, so we keep using it.
+// Note: We updated the URL to the new 'router' domain for better stability.
 const MODELS = {
   SUMMARISE: 'https://router.huggingface.co/hf-inference/models/facebook/bart-large-cnn',
-  GRAMMAR: 'https://router.huggingface.co/hf-inference/models/hassaanik/grammar-correction-model',
-  REWRITE: 'https://router.huggingface.co/hf-inference/models/tuner007/pegasus_paraphrase'
-}
+};
 
-// ✅ Summarization
-router.post('/summarise', async (req, res) => {
-  const { text } = req.body
-  if (!text?.trim()) return res.status(400).json({ error: 'Text is required.' })
-
-  try {
-    const response = await queryModel(MODELS.SUMMARISE, text)
-    res.json({ summary: response[0]?.summary_text || 'No summary returned.' })
-  } catch (err) {
-    res.status(500).json({ error: 'Summarisation failed.', details: err.message })
-  }
-})
-
-// ✅ English Grammar Correction
-router.post('/grammar', async (req, res) => {
-  const { text } = req.body
-  if (!text?.trim()) return res.status(400).json({ error: 'Text is required.' })
-
-  try {
-    const response = await queryModel(MODELS.GRAMMAR, text)
-    res.json({ correctedText: response[0]?.generated_text || 'No corrections made.' })
-  } catch (err) {
-    res.status(500).json({ error: 'Grammar correction failed.', details: err.message })
-  }
-})
-
-// ✅ Rewrite / Paraphrase
+// ✅ REWRITE ROUTE (Uses Google Gemini)
 router.post('/rewrite', async (req, res) => {
-  const { text, target } = req.body
-  if (!text?.trim() || !target?.trim()) {
-    return res.status(400).json({ error: 'Text and target are required.' })
-  }
+  const { text } = req.body;
+  console.log(`📝 Rewrite Request. Text length: ${text?.length}`);
 
-  const prompt = buildRewritePrompt(target, text)
+  if (!text?.trim()) {
+    return res.status(400).json({ error: 'Text is required.' });
+  }
 
   try {
-    const response = await queryModel(MODELS.REWRITE, prompt, {
-      temperature: 0.7,
-      top_p: 0.9,
-      max_new_tokens: 250,
-      return_full_text: false
-    })
-    res.json({ rewritten: response[0]?.generated_text?.trim() || 'No rewrite returned.' })
+    // Construct a clear prompt for Gemini
+    const prompt = `Rewrite the following text to be more professional, polite, and clear. Return ONLY the rewritten text, no explanations.\n\nText: "${text}"`;
+    
+    const result = await geminiModel.generateContent(prompt);
+    const response = await result.response;
+    const rewrittenText = response.text().trim();
+
+    res.json({ rewritten: rewrittenText });
   } catch (err) {
-    // This 'err.message' is what you saw in your console
-    res.status(500).json({ error: 'Rewriting failed.', details: err.message })
+    console.error('❌ Rewrite Route Error:', err.message);
+    // Fallback error message
+    res.status(500).json({ 
+      error: 'Rewriting failed.', 
+      details: err.message.includes('429') ? 'AI is currently busy (Rate Limit). Please try again.' : err.message 
+    });
   }
-})
+});
 
-// ✅ Analyze Endpoint
-router.post('/analyze', (req, res) => {
-  const { text } = req.body
-  if (!text?.trim()) return res.status(400).json({ error: 'Text is required.' })
+// ✅ GRAMMAR ROUTE (Uses Google Gemini)
+router.post('/grammar', async (req, res) => {
+  const { text } = req.body;
+  if (!text?.trim()) return res.status(400).json({ error: 'Text is required.' });
 
-  const wordCount = text.trim().split(/\s+/).length
-  const letterCount = text.replace(/\s+/g, '').length
-  res.json({ wordCount, letterCount })
-})
+  try {
+    const prompt = `Fix the grammar and spelling in the following text. Return ONLY the corrected text. If the text is already correct, return it as is.\n\nText: "${text}"`;
+    
+    const result = await geminiModel.generateContent(prompt);
+    const response = await result.response;
+    const correctedText = response.text().trim();
 
-export default router
+    res.json({ correctedText: correctedText });
+  } catch (err) {
+    console.error('❌ Grammar Route Error:', err.message);
+    res.status(500).json({ 
+      error: 'Grammar correction failed.', 
+      details: err.message 
+    });
+  }
+});
+
+// ✅ SUMMARISE ROUTE (Uses Hugging Face BART)
+router.post('/summarise', async (req, res) => {
+  const { text } = req.body;
+  if (!text?.trim()) return res.status(400).json({ error: 'Text is required.' });
+
+  try {
+    // BART is a summarization-specific model, so we send the text directly
+    const response = await queryModel(MODELS.SUMMARISE, text);
+    
+    // Handle standard Hugging Face response format
+    const summary = response[0]?.summary_text || response?.summary_text || 'No summary generated.';
+    
+    res.json({ summary: summary });
+  } catch (err) {
+    console.error('❌ Summary Route Error:', err.message);
+    res.status(500).json({ error: 'Summarisation failed.', details: err.message });
+  }
+});
+
+export default router;

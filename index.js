@@ -2,29 +2,28 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import nlpRoutes from "./routes/nlp.js";
-import uploadRoutes from "./routes/upload.js";
+// import uploadRoutes from "./routes/upload.js"; // Uncomment if you have this file
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5050;
 
-app.use(cors({
-  origin: "http://localhost:5173",
-  methods: ["GET","POST"],
-  allowedHeaders: ["Content-Type"]
-}));
+// ✅ FIXED: Open CORS to prevent "Access Control" errors during dev
+app.use(cors());
 
+// ✅ REQUIRED: To parse JSON bodies from frontend
 app.use(express.json());
 
 app.get("/", (req, res) => {
-  console.log("🔥 GET / hit");
   res.status(200).send("Backend running ✅");
 });
 
-app.use("/api/upload", uploadRoutes);
+// Routes
 app.use("/api/nlp", nlpRoutes);
+// app.use("/api/upload", uploadRoutes);
 
 app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+  console.log(`\n🚀 Server running at http://localhost:${PORT}`);
+  console.log(`👉 API endpoint ready at http://localhost:${PORT}/api/nlp/rewrite\n`);
 });

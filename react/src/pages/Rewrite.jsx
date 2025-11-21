@@ -14,20 +14,9 @@ const Rewrite = () => {
 
   const API_URL = "http://localhost:5050/api/nlp/rewrite"; 
 
-  const toneOptions = [
-    "Formal", "Informal", "Professional", "Friendly", "Humorous",
-    "Encouraging", "Empathetic", "Assertive", "Neutral", "Persuasive", "Critical"
-  ];
-
-  const styleOptions = [
-    "Bullet Points", "Narrative", "Essay", "Dialogue", "Storytelling",
-    "Technical Writing", "Journalistic", "Poetic", "Academic", "Creative"
-  ];
-
-  const audienceOptions = [
-    "General Public", "Kids", "College Students", "Professionals", "Executives",
-    "Researchers", "Beginners", "Advanced Learners", "Investors", "Clients"
-  ];
+  const toneOptions = ["Formal", "Informal", "Professional", "Friendly", "Humorous", "Assertive", "Persuasive"];
+  const styleOptions = ["Bullet Points", "Narrative", "Dialogue", "Technical", "Academic", "Creative"];
+  const audienceOptions = ["General Public", "Kids", "Professionals", "Beginners", "Experts"];
 
   const typeWriter = (fullText) => {
     setOutput("");
