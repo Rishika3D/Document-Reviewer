@@ -1,77 +1,107 @@
 import express from 'express';
 import dotenv from 'dotenv';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import Groq from 'groq-sdk'; // Using Groq because it passed your connectivity tests
+import rateLimit from 'express-rate-limit'; // Security package
 import { queryModel } from '../services/huggingFaceServices.js';
 
 dotenv.config();
 
 const router = express.Router();
 
-// --- 1. SETUP GOOGLE GEMINI (For Rewrite & Grammar) ---
-// We use Gemini because the free Hugging Face models are currently unstable.
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-// Using 'gemini-1.5-flash' as the standard efficient model.
-// If you are in Nov 2025 and this gives a 404, switch to 'gemini-2.0-flash'
-const geminiModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+// --- 1. SECURITY: RATE LIMITING ---
+// This prevents users from spamming your API and using up your free credits.
+// Settings: 20 requests per 15 minutes per IP address.
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // Limit each IP to 20 requests per windowMs
+  message: {
+    error: 'Too many requests from this IP, please try again after 15 minutes.'
+  },
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+});
 
-// --- 2. SETUP HUGGING FACE (For Summarisation Only) ---
-// BART is working perfectly, so we keep using it.
-// Note: We updated the URL to the new 'router' domain for better stability.
+// Apply the rate limiter to all routes in this router
+router.use(apiLimiter);
+
+
+// --- 2. SETUP AI SERVICES ---
+
+// A. GROQ (For Rewrite & Grammar)
+// We use Groq/Llama-3.3 because it is currently the most stable free option.
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+// B. HUGGING FACE (For Summarisation Only)
+// BART works well for summaries and is stable on HF.
 const MODELS = {
   SUMMARISE: 'https://router.huggingface.co/hf-inference/models/facebook/bart-large-cnn',
 };
 
-// ✅ REWRITE ROUTE (Uses Google Gemini)
+
+// --- 3. ROUTES ---
+
+// ✅ REWRITE ROUTE (Using Groq)
 router.post('/rewrite', async (req, res) => {
   const { text } = req.body;
-  console.log(`📝 Rewrite Request. Text length: ${text?.length}`);
+  console.log(`📝 Rewrite Request. Length: ${text?.length}`);
 
-  if (!text?.trim()) {
-    return res.status(400).json({ error: 'Text is required.' });
-  }
+  if (!text?.trim()) return res.status(400).json({ error: 'Text is required.' });
 
   try {
-    // Construct a clear prompt for Gemini
-    const prompt = `Rewrite the following text to be more professional, polite, and clear. Return ONLY the rewritten text, no explanations.\n\nText: "${text}"`;
-    
-    const result = await geminiModel.generateContent(prompt);
-    const response = await result.response;
-    const rewrittenText = response.text().trim();
-
-    res.json({ rewritten: rewrittenText });
-  } catch (err) {
-    console.error('❌ Rewrite Route Error:', err.message);
-    // Fallback error message
-    res.status(500).json({ 
-      error: 'Rewriting failed.', 
-      details: err.message.includes('429') ? 'AI is currently busy (Rate Limit). Please try again.' : err.message 
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: "system",
+          content: "You are a professional editor. Rewrite the user's text to be professional, polite, and clear. Output ONLY the rewritten text. Do not add conversational filler like 'Here is the rewritten text'."
+        },
+        {
+          role: "user",
+          content: text
+        }
+      ],
+      // Verified working model ID from your tests
+      model: "llama-3.3-70b-versatile",
     });
+
+    const rewrittenText = completion.choices[0]?.message?.content || "";
+    res.json({ rewritten: rewrittenText });
+
+  } catch (err) {
+    console.error('❌ Rewrite Error:', err.message);
+    res.status(500).json({ error: 'Rewriting failed.', details: err.message });
   }
 });
 
-// ✅ GRAMMAR ROUTE (Uses Google Gemini)
+// ✅ GRAMMAR ROUTE (Using Groq)
 router.post('/grammar', async (req, res) => {
   const { text } = req.body;
   if (!text?.trim()) return res.status(400).json({ error: 'Text is required.' });
 
   try {
-    const prompt = `Fix the grammar and spelling in the following text. Return ONLY the corrected text. If the text is already correct, return it as is.\n\nText: "${text}"`;
-    
-    const result = await geminiModel.generateContent(prompt);
-    const response = await result.response;
-    const correctedText = response.text().trim();
-
-    res.json({ correctedText: correctedText });
-  } catch (err) {
-    console.error('❌ Grammar Route Error:', err.message);
-    res.status(500).json({ 
-      error: 'Grammar correction failed.', 
-      details: err.message 
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: "system",
+          content: "You are a grammar checker. Fix the grammar and spelling in the user's text. Output ONLY the corrected text. Do not provide explanations or notes."
+        },
+        {
+          role: "user",
+          content: text
+        }
+      ],
+      model: "llama-3.3-70b-versatile",
     });
+
+    const correctedText = completion.choices[0]?.message?.content || "";
+    res.json({ correctedText: correctedText });
+
+  } catch (err) {
+    console.error('❌ Grammar Error:', err.message);
+    res.status(500).json({ error: 'Grammar correction failed.', details: err.message });
   }
 });
 
-// ✅ SUMMARISE ROUTE (Uses Hugging Face BART)
+// ✅ SUMMARISE ROUTE (Using Hugging Face BART)
 router.post('/summarise', async (req, res) => {
   const { text } = req.body;
   if (!text?.trim()) return res.status(400).json({ error: 'Text is required.' });
@@ -85,7 +115,7 @@ router.post('/summarise', async (req, res) => {
     
     res.json({ summary: summary });
   } catch (err) {
-    console.error('❌ Summary Route Error:', err.message);
+    console.error('❌ Summary Error:', err.message);
     res.status(500).json({ error: 'Summarisation failed.', details: err.message });
   }
 });
