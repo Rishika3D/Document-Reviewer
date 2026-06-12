@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import NavSum from '../components/NavSum';
+import { ToolShell, Panel, PrimaryButton, inputClass, textareaClass } from '../components/ToolShell';
 
 const GetHelp = () => {
   const [subject, setSubject] = useState('');
@@ -10,80 +10,89 @@ const GetHelp = () => {
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    // TODO: connect this with your backend
+    // TODO: connect this with the backend
     console.log({ subject, message, email });
     setSubmitted(true);
 
-    // reset
     setSubject('');
     setMessage('');
     setEmail('');
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-white">
-      <div className="sticky top-0 z-50 bg-white shadow-sm">
-        <NavSum />
-      </div>
-
-      <main className="flex-1 px-8 py-12 max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold mb-2">Get Help</h1>
-        <p className="text-gray-600 mb-6">We're here to assist you. Fill out the form and we'll get back to you soon.</p>
-
+    <ToolShell
+      kicker="Support"
+      title="We're"
+      accent="listening."
+      blurb="Hit a snag or have an idea? Tell us about it and we'll get back to you soon."
+    >
+      <div className="max-w-2xl">
         {submitted ? (
-          <div className="bg-green-100 border border-green-300 text-green-800 p-4 rounded">
-            ✅ Your message has been submitted successfully. We'll reach out shortly.
-          </div>
+          <Panel className="rise rise-2">
+            <div className="flex items-start gap-3">
+              <span className="w-8 h-8 shrink-0 rounded-full bg-moss/15 text-moss flex items-center justify-center">✓</span>
+              <div>
+                <p className="font-display text-lg mb-0.5">Message sent</p>
+                <p className="text-sm text-ink-soft">
+                  Thanks for reaching out — we'll reply to your email shortly.
+                </p>
+                <button
+                  onClick={() => setSubmitted(false)}
+                  className="mt-3 text-sm text-rust hover:text-rust-deep underline underline-offset-4"
+                >
+                  Send another message
+                </button>
+              </div>
+            </div>
+          </Panel>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label htmlFor="email" className="block font-medium mb-1">Your Email</label>
-              <input
-                id="email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="w-full border border-gray-300 rounded-lg p-3"
-              />
-            </div>
+          <Panel className="rise rise-2">
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label htmlFor="email" className="block text-sm text-ink-soft mb-1.5">Your email</label>
+                <input
+                  id="email"
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className={inputClass}
+                />
+              </div>
 
-            <div>
-              <label htmlFor="subject" className="block font-medium mb-1">Subject</label>
-              <input
-                id="subject"
-                type="text"
-                required
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                placeholder="What's the issue?"
-                className="w-full border border-gray-300 rounded-lg p-3"
-              />
-            </div>
+              <div>
+                <label htmlFor="subject" className="block text-sm text-ink-soft mb-1.5">Subject</label>
+                <input
+                  id="subject"
+                  type="text"
+                  required
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  placeholder="What's going on?"
+                  className={inputClass}
+                />
+              </div>
 
-            <div>
-              <label htmlFor="message" className="block font-medium mb-1">Message</label>
-              <textarea
-                id="message"
-                required
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder="Describe the issue in detail..."
-                className="w-full border border-gray-300 rounded-lg p-3 h-32 resize-none"
-              />
-            </div>
+              <div>
+                <label htmlFor="message" className="block text-sm text-ink-soft mb-1.5">Message</label>
+                <textarea
+                  id="message"
+                  required
+                  rows={6}
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder="Describe the issue in detail…"
+                  className={textareaClass}
+                />
+              </div>
 
-            <button
-              type="submit"
-              className="bg-black text-white px-6 py-2 rounded-md hover:bg-gray-800 transition"
-            >
-              Submit
-            </button>
-          </form>
+              <PrimaryButton type="submit">Send message</PrimaryButton>
+            </form>
+          </Panel>
         )}
-      </main>
-    </div>
+      </div>
+    </ToolShell>
   );
 };
 

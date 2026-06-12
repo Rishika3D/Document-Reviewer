@@ -1,1 +1,134 @@
-@import "tailwindcss"
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Albert+Sans:ital,wght@0,300..800;1,300..800&family=Spline+Sans+Mono:wght@400..600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  /* Warm editorial palette — paper, ink, one rust accent */
+  --color-paper: #faf6ef;
+  --color-cream: #f1eadb;
+  --color-card: #fffdf8;
+  --color-ink: #221d18;
+  --color-ink-soft: #6f6557;
+  --color-ink-faint: #a39686;
+  --color-line: #e4dccb;
+  --color-rust: #b04f24;
+  --color-rust-deep: #8c3d1a;
+  --color-rust-wash: #f6e7dc;
+  --color-moss: #56653f;
+
+  --font-display: "Fraunces", "Georgia", serif;
+  --font-body: "Albert Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Spline Sans Mono", ui-monospace, "SF Mono", monospace;
+
+  --shadow-lift: 0 1px 2px rgb(34 29 24 / 0.04), 0 8px 24px -8px rgb(34 29 24 / 0.12);
+  --shadow-pop: 0 2px 4px rgb(34 29 24 / 0.06), 0 16px 40px -12px rgb(34 29 24 / 0.18);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+  }
+
+  ::selection {
+    background: var(--color-rust);
+    color: var(--color-paper);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line);
+    border-radius: 999px;
+    border: 2px solid var(--color-paper);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-ink-faint);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-ink-faint);
+  }
+}
+
+@layer components {
+  /* Staggered entrance — add .rise and a .rise-N delay */
+  .rise {
+    opacity: 0;
+    animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+  .rise-1 { animation-delay: 0.05s; }
+  .rise-2 { animation-delay: 0.12s; }
+  .rise-3 { animation-delay: 0.19s; }
+  .rise-4 { animation-delay: 0.26s; }
+  .rise-5 { animation-delay: 0.33s; }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Subtle paper grain over everything */
+  .grain::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    pointer-events: none;
+    opacity: 0.04;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* Quill editor — blend the snow theme into the paper aesthetic */
+  .ql-toolbar.ql-snow {
+    border: none !important;
+    border-bottom: 1px solid var(--color-line) !important;
+    background: var(--color-cream);
+    border-radius: 0.75rem 0.75rem 0 0;
+    font-family: var(--font-body);
+  }
+  .ql-container.ql-snow {
+    border: none !important;
+    font-family: var(--font-body);
+    font-size: 1rem;
+    background: var(--color-card);
+    border-radius: 0 0 0.75rem 0.75rem;
+  }
+  .ql-editor {
+    min-height: 380px;
+    line-height: 1.75;
+  }
+  .ql-editor.ql-blank::before {
+    color: var(--color-ink-faint) !important;
+    font-style: normal !important;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes blink-caret {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}

@@ -1,10 +1,15 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import nlpRoutes from "./routes/nlp.js";
-import uploadRoutes from "./routes/upload.js";
 
-dotenv.config();
+// Load .env from this file's directory so the server works regardless of
+// which directory it is launched from.
+dotenv.config({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), ".env") });
+
+const { default: nlpRoutes } = await import("./routes/nlp.js");
+const { default: uploadRoutes } = await import("./routes/upload.js");
 
 if (!process.env.GROQ_API_KEY) {
   console.error("❌ Missing GROQ_API_KEY in .env — the NLP features will not work without it.");
