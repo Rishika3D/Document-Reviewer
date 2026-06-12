@@ -8,6 +8,9 @@ AI inference runs on [Groq](https://console.groq.com) (Llama 3.3 70B, with autom
 | Method | Endpoint | Body | Returns |
 |---|---|---|---|
 | GET | `/health` | — | `{ status, uptime }` |
+| POST | `/api/auth/signup` | `{ name, email, password }` | `{ token, user }` |
+| POST | `/api/auth/login` | `{ email, password }` | `{ token, user }` |
+| GET | `/api/auth/me` | — (Bearer token) | `{ user }` |
 | POST | `/api/nlp/rewrite` | `{ text, tone?, target? }` | `{ rewritten }` |
 | POST | `/api/nlp/grammar` | `{ text }` | `{ correctedText }` |
 | POST | `/api/nlp/summarise` (or `/summarize`) | `{ text, length?, format? }` | `{ summary }` |
@@ -18,7 +21,10 @@ AI inference runs on [Groq](https://console.groq.com) (Llama 3.3 70B, with autom
 - `length` — target summary word count (max 1000)
 - `format` — `"paragraph"` (default) or `"bullets"`
 - `tone` — e.g. `"professional"` (default), `"friendly"`, `"concise"`
-- All text inputs capped at 50,000 characters; rate limit 30 requests / 15 min / IP.
+- All `/api/nlp/*` and `/api/upload` routes require a `Authorization: Bearer <token>` header.
+- Auth: bcrypt-hashed passwords in SQLite, JWT sessions (7-day expiry).
+- Rate limits: 30 AI requests / 15 min per user; 15 auth attempts / 15 min per IP.
+- All text inputs capped at 50,000 characters; security headers via helmet.
 - Errors always return JSON: `{ "error": "..." }`
 
 ## Run locally
@@ -39,7 +45,9 @@ Server runs at http://localhost:5050.
    - Start command: `npm start`
 3. Set environment variables:
    - `GROQ_API_KEY` (required)
+   - `JWT_SECRET` (required) — generate with `openssl rand -hex 32`
    - `ALLOWED_ORIGINS` — your frontend URL(s), comma-separated (recommended; CORS is open to all origins if unset)
+   - `DB_PATH` — optional; point at a persistent disk so user accounts survive redeploys (SQLite defaults to `./data/app.db`, which is ephemeral on most free tiers)
 4. The platform sets `PORT` automatically; the server binds `0.0.0.0` and handles SIGTERM gracefully.
 5. Point the frontend at the deployed URL by setting `VITE_API_URL` in the React app's env.
 

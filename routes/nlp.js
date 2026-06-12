@@ -1,15 +1,17 @@
 import express from "express";
-import rateLimit from "express-rate-limit";
+import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import { chat } from "../services/groqService.js";
 
 const router = express.Router();
 
 // --- RATE LIMITING ---
-// Prevents abuse of the free-tier AI credits: 30 requests / 15 min per IP.
+// Prevents abuse of the free-tier AI credits: 30 requests / 15 min,
+// tracked per logged-in user (falls back to IP if somehow unauthenticated).
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
-  message: { error: "Too many requests from this IP, please try again after 15 minutes." },
+  keyGenerator: (req) => (req.user ? `user:${req.user.id}` : ipKeyGenerator(req.ip)),
+  message: { error: "Too many requests, please try again after 15 minutes." },
   standardHeaders: true,
   legacyHeaders: false,
 });

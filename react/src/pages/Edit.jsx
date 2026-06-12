@@ -6,6 +6,7 @@ import 'quill/dist/quill.snow.css';
 import NavSum from '../components/NavSum';
 import axios from 'axios';
 import { API_BASE } from '../config';
+import { authHeaders } from '../auth';
 import { FiUpload, FiDownload, FiTrash2 } from 'react-icons/fi';
 
 const pastelColors = ["#f6d9cb", "#f3e6c4", "#e3e9cd", "#d7e4dc", "#dce3ee", "#ecdcea", "transparent"];
@@ -79,7 +80,7 @@ export default function Edit() {
     const range = quill.getSelection();
     setRewriting(true);
     try {
-      const res = await axios.post(`${API_BASE}/api/nlp/rewrite`, { text: selectedText });
+      const res = await axios.post(`${API_BASE}/api/nlp/rewrite`, { text: selectedText }, { headers: authHeaders() });
       quill.deleteText(range.index, range.length);
       quill.insertText(range.index, res.data.rewritten || selectedText);
     } catch (err) {
@@ -122,7 +123,7 @@ export default function Edit() {
 
     setLoading(true);
     try {
-      const res = await axios.post(`${API_BASE}/api/upload`, fd);
+      const res = await axios.post(`${API_BASE}/api/upload`, fd, { headers: authHeaders() });
       startTransition(() => {
         setValue(res.data.text);
         quill.root.innerHTML = res.data.text;

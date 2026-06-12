@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { API_BASE } from "../config";
+import { authHeaders } from "../auth";
 import { ToolShell, Panel, PrimaryButton, textareaClass } from "../components/ToolShell";
 
 const GrammarCheck = () => {
@@ -31,7 +32,7 @@ const GrammarCheck = () => {
 
       const res = await fetch(`${API_BASE}/api/nlp/grammar`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ text: inputText }),
       });
 

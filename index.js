@@ -8,6 +8,9 @@ import dotenv from "dotenv";
 // which directory it is launched from.
 dotenv.config({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), ".env") });
 
+const { default: helmet } = await import("helmet");
+const { requireAuth } = await import("./middleware/auth.js");
+const { default: authRoutes } = await import("./routes/auth.js");
 const { default: nlpRoutes } = await import("./routes/nlp.js");
 const { default: uploadRoutes } = await import("./routes/upload.js");
 
@@ -34,6 +37,9 @@ app.use(
   })
 );
 
+// Security headers (CSP off — this is a JSON API, not a page server)
+app.use(helmet({ contentSecurityPolicy: false }));
+
 app.use(express.json({ limit: "2mb" }));
 
 // Health check (used by deployment platforms)
@@ -44,9 +50,10 @@ app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok", uptime: process.uptime() });
 });
 
-// Routes
-app.use("/api/nlp", nlpRoutes);
-app.use("/api/upload", uploadRoutes);
+// Routes — AI and upload endpoints require a logged-in user
+app.use("/api/auth", authRoutes);
+app.use("/api/nlp", requireAuth, nlpRoutes);
+app.use("/api/upload", requireAuth, uploadRoutes);
 
 // 404 handler
 app.use((req, res) => {

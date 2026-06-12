@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import Menu from "./Menu";
-import avatarImg from "../assets/avatar.png";
 import { FiSearch } from "react-icons/fi";
 import { Link, NavLink } from "react-router-dom";
+import { useAuth } from "../auth";
 
 const links = [
   { to: "/", label: "Studio" },
@@ -13,8 +13,17 @@ const links = [
   { to: "/help", label: "Help" },
 ];
 
+const initials = (name = "") =>
+  name
+    .split(/\s+/)
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
 const NavSum = () => {
-  const [isLogged] = useState(true);
+  const { user } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef();
 
@@ -73,28 +82,31 @@ const NavSum = () => {
         </div>
 
         <div className="relative" ref={menuRef}>
-          {isLogged ? (
+          {user ? (
             <>
               <button
                 onClick={() => setMenuOpen((prev) => !prev)}
-                className="block rounded-full ring-2 ring-transparent hover:ring-rust/40 transition"
+                title={user.name}
+                className="w-9 h-9 rounded-full bg-rust-wash text-rust-deep text-sm font-semibold flex items-center justify-center border border-line ring-2 ring-transparent hover:ring-rust/40 transition"
               >
-                <img
-                  src={avatarImg}
-                  alt="User avatar"
-                  className="w-9 h-9 rounded-full border border-line object-cover"
-                />
+                {initials(user.name)}
               </button>
               {menuOpen && <Menu onClose={() => setMenuOpen(false)} />}
             </>
           ) : (
             <div className="flex gap-2">
-              <button className="text-sm px-4 py-2 rounded-full hover:bg-cream transition">
-                Log In
-              </button>
-              <button className="bg-ink text-paper text-sm px-4 py-2 rounded-full hover:bg-rust transition">
-                Sign Up
-              </button>
+              <Link
+                to="/login"
+                className="text-sm px-4 py-2 rounded-full hover:bg-cream transition whitespace-nowrap"
+              >
+                Log in
+              </Link>
+              <Link
+                to="/signup"
+                className="bg-ink text-paper text-sm px-4 py-2 rounded-full hover:bg-rust transition whitespace-nowrap"
+              >
+                Sign up
+              </Link>
             </div>
           )}
         </div>

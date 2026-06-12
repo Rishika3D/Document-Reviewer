@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { API_BASE } from '../config';
+import { authHeaders } from '../auth';
 import { ToolShell, Panel, PrimaryButton, textareaClass } from '../components/ToolShell';
 
 const toneOptions = ["Formal", "Informal", "Professional", "Friendly", "Humorous", "Assertive", "Persuasive"];
@@ -66,7 +67,7 @@ const Rewrite = () => {
       const response = await axios.post(
         `${API_BASE}/api/nlp/rewrite`,
         { text: prompt, target },
-        { headers: { "Content-Type": "application/json" } }
+        { headers: { "Content-Type": "application/json", ...authHeaders() } }
       );
 
       typeWriter(response.data.rewritten || "No output returned.");
