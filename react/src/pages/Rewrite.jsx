@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import NavSum from '../components/NavSum';
 import axios from 'axios';
+import { API_BASE } from '../config';
 
 const Rewrite = () => {
   const [tone, setTone] = useState('');
@@ -12,7 +13,7 @@ const Rewrite = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const API_URL = "http://localhost:5050/api/nlp/rewrite"; 
+  const API_URL = `${API_BASE}/api/nlp/rewrite`;
 
   const toneOptions = ["Formal", "Informal", "Professional", "Friendly", "Humorous", "Assertive", "Persuasive"];
   const styleOptions = ["Bullet Points", "Narrative", "Dialogue", "Technical", "Academic", "Creative"];

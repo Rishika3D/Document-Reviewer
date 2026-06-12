@@ -5,13 +5,10 @@ dotenv.config()
 
 const HF_TOKEN = process.env.HF_TOKEN
 
-// Fail fast if the token is missing
-if (!HF_TOKEN) {
-  console.error("❌ Missing HF_TOKEN in .env file")
-  process.exit(1)
-}
-
 export async function queryModel(modelUrl, input, params = {}) {
+  if (!HF_TOKEN) {
+    throw new Error("Missing HF_TOKEN in .env file")
+  }
   try {
     const response = await axios.post(
       modelUrl,

@@ -5,6 +5,7 @@ import { useQuill } from 'react-quilljs';
 import 'quill/dist/quill.snow.css';
 import NavSum from '../components/NavSum';
 import axios from 'axios';
+import { API_BASE } from '../config';
 
 const pastelColors = ["#FFB3BA","#FFDFBA","#FFFFBA","#BAFFC9","#BAE1FF","#E3BAFF","transparent"];
 
@@ -80,35 +81,17 @@ export default function Edit() {
 
   // ➕ AI rewrite selected text
   const rewriteText = async () => {
-    if (!selectedText) return;
-    const res = await axios.post("http://localhost:5000/api/rewrite",{ text: selectedText });
-
-
+    if (!selectedText || !quill) return;
     const range = quill.getSelection();
-    quill.deleteText(range.index, range.length);
-    quill.insertText(range.index, res.data.output);
-    setShowPopup(false);
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    setLoading(true);
     try {
-      const res = await axios.post('http://localhost:5050/api/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-
-      startTransition(() => {
-        setValue(res.data.text || '');
-        if (quill) {
-          quill.root.innerHTML = res.data.text || '';
-        }
-      });
+      const res = await axios.post(`${API_BASE}/api/nlp/rewrite`, { text: selectedText });
+      quill.deleteText(range.index, range.length);
+      quill.insertText(range.index, res.data.rewritten || selectedText);
     } catch (err) {
-      console.error('Error uploading file:', err);
-      alert('File upload failed. Check the console for details.');
+      console.error('Rewrite failed:', err);
+      alert('Rewrite failed. Check the console for details.');
     } finally {
-      setLoading(false);
+      setShowPopup(false);
     }
   };
 
@@ -141,12 +124,18 @@ export default function Edit() {
     const fd = new FormData(); fd.append('file', f);
 
     setLoading(true);
-    const res = await axios.post('http://localhost:5000/api/upload', fd);
-    startTransition(() => {
-      setValue(res.data.text);
-      quill.root.innerHTML = res.data.text;
-    });
-    setLoading(false);
+    try {
+      const res = await axios.post(`${API_BASE}/api/upload`, fd);
+      startTransition(() => {
+        setValue(res.data.text);
+        quill.root.innerHTML = res.data.text;
+      });
+    } catch (err) {
+      console.error('Upload failed:', err);
+      alert(err.response?.data?.error || 'File upload failed.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const downloadPDF = async () => {

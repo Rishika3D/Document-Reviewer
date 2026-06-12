@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Navbar from '../components/NavSum';
+import { API_BASE } from '../config';
 
 const Summarise = () => {
   const [inputText, setInputText] = useState('');
@@ -31,7 +32,7 @@ const Summarise = () => {
     setSummary("...thinking 🤖");
 
     try {
-      const res = await fetch("http://localhost:5000/api/nlp/summarize", {
+      const res = await fetch(`${API_BASE}/api/nlp/summarize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: inputText, length: Number(length) }),

@@ -1,48 +1,64 @@
-import express from 'express';
-import multer from 'multer';
-import * as pdfParse from "pdf-parse";
-import mammoth from 'mammoth';
-import fs from 'fs';
+import express from "express";
+import multer from "multer";
+import { PDFParse } from "pdf-parse";
+import mammoth from "mammoth";
 
 const router = express.Router();
 
-// Set up Multer storage in a temporary uploads folder
-const upload = multer({ dest: 'uploads/' });
+// Memory storage: no temp files left on disk, works on read-only
+// filesystems (most deployment platforms)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+});
 
-// POST /api/upload
-router.post('/', upload.single('file'), async (req, res) => {
+const MAX_EXTRACTED_CHARS = 200000;
+
+// POST /api/upload — accepts PDF, DOCX, or TXT and returns extracted text
+router.post("/", upload.single("file"), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded." });
+  }
+
+  const fileExt = req.file.originalname.split(".").pop().toLowerCase();
+
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded.' });
-    }
+    let extractedText = "";
 
-    const filePath = req.file.path;
-    const fileExt = req.file.originalname.split('.').pop().toLowerCase();
-    let extractedText = '';
-
-    if (fileExt === 'pdf') {
-      // Extract text from PDF
-      const dataBuffer = fs.readFileSync(filePath);
-      const pdfData = await pdfParse(dataBuffer);
-      extractedText = pdfData.text;
-    } 
-    else if (fileExt === 'docx') {
-      // Extract text from DOCX
-      const docxData = await mammoth.extractRawText({ path: filePath });
+    if (fileExt === "pdf") {
+      const parser = new PDFParse({ data: req.file.buffer });
+      try {
+        const result = await parser.getText();
+        extractedText = result.text;
+      } finally {
+        await parser.destroy();
+      }
+    } else if (fileExt === "docx") {
+      const docxData = await mammoth.extractRawText({ buffer: req.file.buffer });
       extractedText = docxData.value;
-    } 
-    else {
-      fs.unlinkSync(filePath); // delete uploaded file
-      return res.status(400).json({ error: 'Unsupported file format. Only PDF and DOCX are allowed.' });
+    } else if (fileExt === "txt" || fileExt === "md") {
+      extractedText = req.file.buffer.toString("utf-8");
+    } else {
+      return res.status(400).json({
+        error: "Unsupported file format. Allowed: PDF, DOCX, TXT, MD.",
+      });
     }
 
-    // Delete uploaded file after processing to save space
-    fs.unlinkSync(filePath);
+    extractedText = extractedText.trim();
+    if (!extractedText) {
+      return res.status(422).json({
+        error: "No text could be extracted from this file. It may be a scanned/image-only document.",
+      });
+    }
 
-    res.json({ text: extractedText.trim() });
+    res.json({
+      text: extractedText.slice(0, MAX_EXTRACTED_CHARS),
+      filename: req.file.originalname,
+      truncated: extractedText.length > MAX_EXTRACTED_CHARS,
+    });
   } catch (error) {
-    console.error('File processing error:', error);
-    res.status(500).json({ error: 'Failed to process file.' });
+    console.error("❌ File processing error:", error.message);
+    res.status(500).json({ error: "Failed to process file. It may be corrupted or password-protected." });
   }
 });
 

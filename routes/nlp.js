@@ -1,122 +1,141 @@
-import express from 'express';
-import dotenv from 'dotenv';
-import Groq from 'groq-sdk'; // Using Groq because it passed your connectivity tests
-import rateLimit from 'express-rate-limit'; // Security package
-import { queryModel } from '../services/huggingFaceServices.js';
-
-dotenv.config();
+import express from "express";
+import rateLimit from "express-rate-limit";
+import { chat } from "../services/groqService.js";
 
 const router = express.Router();
 
-// --- 1. SECURITY: RATE LIMITING ---
-// This prevents users from spamming your API and using up your free credits.
-// Settings: 20 requests per 15 minutes per IP address.
+// --- RATE LIMITING ---
+// Prevents abuse of the free-tier AI credits: 30 requests / 15 min per IP.
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // Limit each IP to 20 requests per windowMs
-  message: {
-    error: 'Too many requests from this IP, please try again after 15 minutes.'
-  },
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: { error: "Too many requests from this IP, please try again after 15 minutes." },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
-
-// Apply the rate limiter to all routes in this router
 router.use(apiLimiter);
 
+// --- INPUT VALIDATION ---
+const MAX_TEXT_LENGTH = 50000; // ~10k words, safely within model context
 
-// --- 2. SETUP AI SERVICES ---
+function validateText(req, res, next) {
+  const { text } = req.body || {};
+  if (typeof text !== "string" || !text.trim()) {
+    return res.status(400).json({ error: "Text is required." });
+  }
+  if (text.length > MAX_TEXT_LENGTH) {
+    return res.status(400).json({
+      error: `Text too long (${text.length} chars). Maximum is ${MAX_TEXT_LENGTH} characters.`,
+    });
+  }
+  req.body.text = text.trim();
+  next();
+}
 
-// A. GROQ (For Rewrite & Grammar)
-// We use Groq/Llama-3.3 because it is currently the most stable free option.
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+function handleError(res, label, err) {
+  console.error(`❌ ${label} Error:`, err.message);
+  const status = err.status === 429 ? 429 : 502;
+  const message =
+    status === 429
+      ? "The AI service is rate-limited right now. Please try again in a minute."
+      : `${label} failed. Please try again.`;
+  res.status(status).json({ error: message });
+}
 
-// B. HUGGING FACE (For Summarisation Only)
-// BART works well for summaries and is stable on HF.
-const MODELS = {
-  SUMMARISE: 'https://router.huggingface.co/hf-inference/models/facebook/bart-large-cnn',
+// --- ROUTES ---
+
+// REWRITE: optional `tone` ("professional", "friendly", "concise"...) and
+// `target` audience ("manager", "client"...)
+router.post("/rewrite", validateText, async (req, res) => {
+  const { text, tone = "professional", target } = req.body;
+  try {
+    const audience = target ? ` The text is addressed to a ${target}.` : "";
+    const rewritten = await chat(
+      `You are a professional editor. Rewrite the user's text to be ${tone}, polite, and clear, preserving its meaning and approximate length.${audience} Output ONLY the rewritten text with no preamble or explanations.`,
+      text
+    );
+    res.json({ rewritten });
+  } catch (err) {
+    handleError(res, "Rewrite", err);
+  }
+});
+
+// GRAMMAR: fixes grammar/spelling/punctuation only
+router.post("/grammar", validateText, async (req, res) => {
+  try {
+    const correctedText = await chat(
+      "You are a grammar checker. Fix grammar, spelling, and punctuation in the user's text. Change nothing else — keep the original wording, tone, and formatting wherever it is already correct. Output ONLY the corrected text, no explanations.",
+      req.body.text,
+      { temperature: 0.2 }
+    );
+    res.json({ correctedText });
+  } catch (err) {
+    handleError(res, "Grammar correction", err);
+  }
+});
+
+// SUMMARISE: optional `length` (target word count) and `format`
+// ("paragraph" | "bullets"). Mounted at both spellings.
+const summariseHandler = async (req, res) => {
+  const { text, length, format = "paragraph" } = req.body;
+  try {
+    const words = Number(length) > 0 ? Math.min(Number(length), 1000) : null;
+    const lengthInstruction = words
+      ? `The summary must be approximately ${words} words.`
+      : "Keep the summary to roughly 20% of the original length.";
+    const formatInstruction =
+      format === "bullets"
+        ? "Format the summary as concise bullet points."
+        : "Write the summary as flowing prose.";
+
+    const summary = await chat(
+      `You are an expert summarizer. Summarize the user's text, capturing the key ideas accurately. ${lengthInstruction} ${formatInstruction} Output ONLY the summary, no preamble.`,
+      text,
+      { temperature: 0.3 }
+    );
+    res.json({ summary });
+  } catch (err) {
+    handleError(res, "Summarisation", err);
+  }
 };
+router.post("/summarise", validateText, summariseHandler);
+router.post("/summarize", validateText, summariseHandler);
 
-
-// --- 3. ROUTES ---
-
-// ✅ REWRITE ROUTE (Using Groq)
-router.post('/rewrite', async (req, res) => {
-  const { text } = req.body;
-  console.log(`📝 Rewrite Request. Length: ${text?.length}`);
-
-  if (!text?.trim()) return res.status(400).json({ error: 'Text is required.' });
-
+// KEY POINTS: extracts the main takeaways as a list
+router.post("/keypoints", validateText, async (req, res) => {
   try {
-    const completion = await groq.chat.completions.create({
-      messages: [
-        {
-          role: "system",
-          content: "You are a professional editor. Rewrite the user's text to be professional, polite, and clear. Output ONLY the rewritten text. Do not add conversational filler like 'Here is the rewritten text'."
-        },
-        {
-          role: "user",
-          content: text
-        }
-      ],
-      // Verified working model ID from your tests
-      model: "llama-3.3-70b-versatile",
-    });
-
-    const rewrittenText = completion.choices[0]?.message?.content || "";
-    res.json({ rewritten: rewrittenText });
-
+    const result = await chat(
+      'You are a document analyst. Extract the key points from the user\'s text. Respond with ONLY a JSON object of the shape {"keypoints": ["point 1", "point 2", ...]} containing 3-8 concise points. No markdown fences, no other text.',
+      req.body.text,
+      { temperature: 0.2 }
+    );
+    let keypoints;
+    try {
+      keypoints = JSON.parse(result.replace(/^```(json)?|```$/g, "").trim()).keypoints;
+    } catch {
+      // Model didn't return clean JSON — fall back to splitting lines
+      keypoints = result
+        .split("\n")
+        .map((l) => l.replace(/^[-*•\d.)\s]+/, "").trim())
+        .filter(Boolean);
+    }
+    res.json({ keypoints });
   } catch (err) {
-    console.error('❌ Rewrite Error:', err.message);
-    res.status(500).json({ error: 'Rewriting failed.', details: err.message });
+    handleError(res, "Key point extraction", err);
   }
 });
 
-// ✅ GRAMMAR ROUTE (Using Groq)
-router.post('/grammar', async (req, res) => {
-  const { text } = req.body;
-  if (!text?.trim()) return res.status(400).json({ error: 'Text is required.' });
-
+// TITLE: suggests a title for a document (Notion-style)
+router.post("/title", validateText, async (req, res) => {
   try {
-    const completion = await groq.chat.completions.create({
-      messages: [
-        {
-          role: "system",
-          content: "You are a grammar checker. Fix the grammar and spelling in the user's text. Output ONLY the corrected text. Do not provide explanations or notes."
-        },
-        {
-          role: "user",
-          content: text
-        }
-      ],
-      model: "llama-3.3-70b-versatile",
-    });
-
-    const correctedText = completion.choices[0]?.message?.content || "";
-    res.json({ correctedText: correctedText });
-
+    const title = await chat(
+      "Generate a short, clear title (under 10 words) for the user's document. Output ONLY the title — no quotes, no explanations.",
+      req.body.text,
+      { temperature: 0.5 }
+    );
+    res.json({ title: title.replace(/^["']|["']$/g, "") });
   } catch (err) {
-    console.error('❌ Grammar Error:', err.message);
-    res.status(500).json({ error: 'Grammar correction failed.', details: err.message });
-  }
-});
-
-// ✅ SUMMARISE ROUTE (Using Hugging Face BART)
-router.post('/summarise', async (req, res) => {
-  const { text } = req.body;
-  if (!text?.trim()) return res.status(400).json({ error: 'Text is required.' });
-
-  try {
-    // BART is a summarization-specific model, so we send the text directly
-    const response = await queryModel(MODELS.SUMMARISE, text);
-    
-    // Handle standard Hugging Face response format
-    const summary = response[0]?.summary_text || response?.summary_text || 'No summary generated.';
-    
-    res.json({ summary: summary });
-  } catch (err) {
-    console.error('❌ Summary Error:', err.message);
-    res.status(500).json({ error: 'Summarisation failed.', details: err.message });
+    handleError(res, "Title generation", err);
   }
 });
 

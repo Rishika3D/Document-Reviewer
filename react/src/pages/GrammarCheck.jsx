@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import Navbar from "../components/NavSum";
+import { API_BASE } from "../config";
 
 const GrammarCheck = () => {
   const [inputText, setInputText] = useState("");
@@ -25,14 +26,14 @@ const GrammarCheck = () => {
       setLoading(true);
       setOutput("Fixing your grammar... hold tight 🚀");
 
-      const res = await fetch("http://localhost:5000/grammar", {
+      const res = await fetch(`${API_BASE}/api/nlp/grammar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: inputText }),
       });
 
       const data = await res.json();
-      const correctedText = data.corrected || "No correction generated.";
+      const correctedText = data.correctedText || data.error || "No correction generated.";
 
       typeWriter(correctedText);
     } catch (err) {
