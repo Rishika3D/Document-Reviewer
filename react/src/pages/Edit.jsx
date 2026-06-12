@@ -1,18 +1,25 @@
 'use client';
 
-import React, { useState, useTransition, useEffect } from 'react';
+import React, { useState, useTransition, useEffect, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuill } from 'react-quilljs';
 import 'quill/dist/quill.snow.css';
 import NavSum from '../components/NavSum';
 import axios from 'axios';
 import { API_BASE } from '../config';
 import { authHeaders } from '../auth';
+import { getDocument, createDocument, updateDocument } from '../documents';
 import { FiUpload, FiDownload, FiTrash2 } from 'react-icons/fi';
 
 const pastelColors = ["#f6d9cb", "#f3e6c4", "#e3e9cd", "#d7e4dc", "#dce3ee", "#ecdcea", "transparent"];
 
+const SAVE_DEBOUNCE_MS = 1200;
+
 export default function Edit() {
-  const [value, setValue] = useState('');
+  const { id } = useParams();
+  const navigate = useNavigate();
+
+  const [title, setTitle] = useState('Untitled document');
   const [loading, setLoading] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [comments, setComments] = useState([]);
@@ -20,7 +27,13 @@ export default function Edit() {
   const [showPopup, setShowPopup] = useState(false);
   const [popupPos, setPopupPos] = useState(null);
   const [rewriting, setRewriting] = useState(false);
+  const [saveState, setSaveState] = useState('idle'); // idle | saving | saved | error
   const [savedAt, setSavedAt] = useState(null);
+
+  // Refs so the debounced save always sees the latest values
+  const docIdRef = useRef(null);
+  const titleRef = useRef(title);
+  const saveTimer = useRef(null);
 
   const modules = {
     toolbar: {
@@ -44,20 +57,63 @@ export default function Edit() {
 
   const { quill, quillRef } = useQuill({ theme: 'snow', modules, placeholder: 'Start writing…' });
 
-  // Load saved draft once the editor is ready
+  const scheduleSave = () => {
+    setSaveState('saving');
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      if (!docIdRef.current || !quill) return;
+      try {
+        await updateDocument(docIdRef.current, {
+          title: titleRef.current,
+          content: quill.root.innerHTML,
+        });
+        setSaveState('saved');
+        setSavedAt(new Date());
+      } catch (err) {
+        console.error('Save failed:', err);
+        setSaveState('error');
+      }
+    }, SAVE_DEBOUNCE_MS);
+  };
+
+  // Load the document (or create a fresh one when visiting /edit)
   useEffect(() => {
     if (!quill) return;
-    const saved = localStorage.getItem('doc-draft');
-    if (saved) quill.root.innerHTML = saved;
-  }, [quill]);
+    let cancelled = false;
+
+    (async () => {
+      try {
+        if (id) {
+          const { document: doc } = await getDocument(id);
+          if (cancelled) return;
+          docIdRef.current = doc.id;
+          titleRef.current = doc.title;
+          setTitle(doc.title);
+          if (quill.root.innerHTML !== doc.content) {
+            quill.root.innerHTML = doc.content || '';
+          }
+          setSaveState('saved');
+          setSavedAt(doc.updatedAt ? new Date(doc.updatedAt + 'Z') : null);
+        } else {
+          const { document: doc } = await createDocument({});
+          if (cancelled) return;
+          navigate(`/edit/${doc.id}`, { replace: true });
+        }
+      } catch (err) {
+        console.error('Could not load document:', err);
+        if (!cancelled) setSaveState('error');
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [quill, id]);
 
   useEffect(() => {
     if (!quill) return;
 
-    quill.on('text-change', () => {
-      startTransition(() => setValue(quill.root.innerHTML));
-      localStorage.setItem('doc-draft', quill.root.innerHTML);
-      setSavedAt(new Date());
+    quill.on('text-change', (delta, oldDelta, source) => {
+      if (source !== 'user') return;
+      scheduleSave();
     });
 
     quill.on('selection-change', (range) => {
@@ -72,7 +128,15 @@ export default function Edit() {
         setPopupPos(null);
       }
     });
+
+    return () => clearTimeout(saveTimer.current);
   }, [quill]);
+
+  const handleTitleChange = (e) => {
+    setTitle(e.target.value);
+    titleRef.current = e.target.value;
+    scheduleSave();
+  };
 
   // AI rewrite of the selected passage
   const rewriteText = async () => {
@@ -83,9 +147,10 @@ export default function Edit() {
       const res = await axios.post(`${API_BASE}/api/nlp/rewrite`, { text: selectedText }, { headers: authHeaders() });
       quill.deleteText(range.index, range.length);
       quill.insertText(range.index, res.data.rewritten || selectedText);
+      scheduleSave();
     } catch (err) {
       console.error('Rewrite failed:', err);
-      alert('Rewrite failed. Check the console for details.');
+      alert(err.response?.data?.error || 'Rewrite failed.');
     } finally {
       setRewriting(false);
       setShowPopup(false);
@@ -105,14 +170,15 @@ export default function Edit() {
     if (newComment.text) {
       setComments([newComment, ...comments]);
       quill.formatText(range.index, range.length, 'background', newComment.color);
+      scheduleSave();
     }
     setShowPopup(false);
   };
 
-  const deleteComment = (id) => {
-    const c = comments.find((c) => c.id === id);
+  const deleteComment = (commentId) => {
+    const c = comments.find((c) => c.id === commentId);
     if (quill && c?.range) quill.formatText(c.range.index, c.range.length, 'background', 'transparent');
-    setComments(comments.filter((c) => c.id !== id));
+    setComments(comments.filter((c) => c.id !== commentId));
   };
 
   const handleFileUpload = async (e) => {
@@ -125,9 +191,15 @@ export default function Edit() {
     try {
       const res = await axios.post(`${API_BASE}/api/upload`, fd, { headers: authHeaders() });
       startTransition(() => {
-        setValue(res.data.text);
-        quill.root.innerHTML = res.data.text;
+        if (quill) quill.root.innerHTML = res.data.text;
       });
+      // Use the filename as the title if the doc is still untitled
+      if (titleRef.current === 'Untitled document' && res.data.filename) {
+        const base = res.data.filename.replace(/\.[^.]+$/, '');
+        titleRef.current = base;
+        setTitle(base);
+      }
+      scheduleSave();
     } catch (err) {
       console.error('Upload failed:', err);
       alert(err.response?.data?.error || 'File upload failed.');
@@ -138,16 +210,27 @@ export default function Edit() {
   };
 
   const downloadDocument = () => {
+    const html = quill ? quill.root.innerHTML : '';
     const blob = new Blob(
-      [`<html><head><meta charset="utf-8"><title>Document</title></head><body>${value}</body></html>`],
+      [`<html><head><meta charset="utf-8"><title>${title}</title></head><body>${html}</body></html>`],
       { type: 'text/html' }
     );
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = 'document.html';
+    link.download = `${title || 'document'}.html`;
     link.click();
     URL.revokeObjectURL(link.href);
   };
+
+  const statusLine = loading
+    ? 'Extracting text…'
+    : saveState === 'saving'
+    ? 'Saving…'
+    : saveState === 'error'
+    ? 'Could not save — check your connection'
+    : savedAt
+    ? `Saved ${savedAt.toLocaleTimeString()}`
+    : 'Saved to your account as you type';
 
   return (
     <div className="grain flex flex-col min-h-screen bg-paper">
@@ -159,13 +242,18 @@ export default function Edit() {
         {/* EDITOR */}
         <div className="flex-1 px-6 lg:px-10 py-8 relative min-w-0">
           <div className="max-w-3xl mx-auto">
-            <header className="rise rise-1 flex flex-wrap items-center justify-between gap-3 mb-5">
-              <div>
+            <header className="rise rise-1 flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div className="min-w-0 flex-1">
                 <p className="font-mono text-xs uppercase tracking-[0.22em] text-rust mb-1">Editor</p>
-                <h1 className="font-display text-3xl font-light tracking-tight">Untitled document</h1>
+                <input
+                  value={title}
+                  onChange={handleTitleChange}
+                  placeholder="Untitled document"
+                  className="w-full font-display text-3xl font-light tracking-tight bg-transparent focus:outline-none border-b border-transparent focus:border-line transition-colors"
+                />
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <label className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-card border border-line rounded-xl cursor-pointer hover:border-rust/50 hover:shadow-lift transition-all">
                   <FiUpload className="text-ink-soft" />
                   Import
@@ -186,12 +274,8 @@ export default function Edit() {
               </div>
             </header>
 
-            <p className="rise rise-2 mb-3 font-mono text-[11px] text-ink-faint">
-              {loading
-                ? 'Extracting text…'
-                : savedAt
-                ? `Draft saved ${savedAt.toLocaleTimeString()}`
-                : 'Drafts save automatically to this device'}
+            <p className={`rise rise-2 mb-3 font-mono text-[11px] ${saveState === 'error' ? 'text-rust-deep' : 'text-ink-faint'}`}>
+              {statusLine}
               {isPending && ' · updating…'}
             </p>
 

@@ -17,11 +17,15 @@ AI inference runs on [Groq](https://console.groq.com) (Llama 3.3 70B, with autom
 | POST | `/api/nlp/keypoints` | `{ text }` | `{ keypoints: [...] }` |
 | POST | `/api/nlp/title` | `{ text }` | `{ title }` |
 | POST | `/api/upload` | multipart `file` (PDF/DOCX/TXT/MD, max 10MB) | `{ text, filename, truncated }` |
+| GET | `/api/documents?search=&starred=1` | — | `{ documents: [...] }` |
+| POST | `/api/documents` | `{ title?, content? }` | `{ document }` |
+| GET/PUT/DELETE | `/api/documents/:id` | PUT: `{ title?, content?, starred? }` | `{ document }` / `{ ok }` |
+| POST | `/api/help` | `{ email, subject, message }` | `{ ok }` |
 
 - `length` — target summary word count (max 1000)
 - `format` — `"paragraph"` (default) or `"bullets"`
 - `tone` — e.g. `"professional"` (default), `"friendly"`, `"concise"`
-- All `/api/nlp/*` and `/api/upload` routes require a `Authorization: Bearer <token>` header.
+- All `/api/nlp/*`, `/api/upload`, and `/api/documents` routes require a `Authorization: Bearer <token>` header; documents are scoped per user.
 - Auth: bcrypt-hashed passwords in SQLite, JWT sessions (7-day expiry).
 - Rate limits: 30 AI requests / 15 min per user; 15 auth attempts / 15 min per IP.
 - All text inputs capped at 50,000 characters; security headers via helmet.

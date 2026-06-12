@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Menu from "./Menu";
 import { FiSearch } from "react-icons/fi";
-import { Link, NavLink } from "react-router-dom";
+import { Link, NavLink, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth";
 
 const links = [
@@ -24,8 +24,17 @@ const initials = (name = "") =>
 
 const NavSum = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [query, setQuery] = useState(searchParams.get("q") || "");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef();
+
+  // Search filters the document list on the Home page
+  const handleSearch = (e) => {
+    e.preventDefault();
+    navigate(query.trim() ? `/?q=${encodeURIComponent(query.trim())}` : "/");
+  };
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -72,14 +81,21 @@ const NavSum = () => {
 
       {/* Search + Avatar */}
       <div className="flex items-center gap-4 shrink-0">
-        <div className="relative hidden lg:block w-44 lg:w-56 focus-within:w-64 transition-all duration-300">
-          <input
-            type="text"
-            placeholder="Search documents…"
-            className="w-full pl-9 pr-4 py-2 text-sm bg-card border border-line rounded-full focus:outline-none focus:border-rust focus:ring-2 focus:ring-rust/15 transition"
-          />
-          <FiSearch className="absolute top-1/2 left-3 -translate-y-1/2 text-ink-faint" />
-        </div>
+        {user && (
+          <form
+            onSubmit={handleSearch}
+            className="relative hidden lg:block w-44 lg:w-56 focus-within:w-64 transition-all duration-300"
+          >
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search documents…"
+              className="w-full pl-9 pr-4 py-2 text-sm bg-card border border-line rounded-full focus:outline-none focus:border-rust focus:ring-2 focus:ring-rust/15 transition"
+            />
+            <FiSearch className="absolute top-1/2 left-3 -translate-y-1/2 text-ink-faint" />
+          </form>
+        )}
 
         <div className="relative" ref={menuRef}>
           {user ? (

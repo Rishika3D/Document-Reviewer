@@ -1,14 +1,16 @@
 import React from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate, useSearchParams } from "react-router-dom";
+import { useAuth } from "../auth";
+import { createDocument } from "../documents";
 import {
   FiEdit3,
   FiFileText,
   FiRefreshCw,
   FiCheckCircle,
   FiStar,
-  FiSettings,
   FiHelpCircle,
   FiPlus,
+  FiHome,
 } from "react-icons/fi";
 
 const SectionLabel = ({ children }) => (
@@ -17,18 +19,15 @@ const SectionLabel = ({ children }) => (
   </p>
 );
 
+const itemClass = (active) =>
+  `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+    active
+      ? "bg-rust-wash text-rust-deep font-semibold"
+      : "text-ink-soft hover:bg-cream hover:text-ink"
+  }`;
+
 const Item = ({ to, icon: Icon, children }) => (
-  <NavLink
-    to={to}
-    end={to === "/"}
-    className={({ isActive }) =>
-      `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-        isActive
-          ? "bg-rust-wash text-rust-deep font-semibold"
-          : "text-ink-soft hover:bg-cream hover:text-ink"
-      }`
-    }
-  >
+  <NavLink to={to} end={to === "/"} className={({ isActive }) => itemClass(isActive)}>
     <Icon className="text-base shrink-0" />
     {children}
   </NavLink>
@@ -36,21 +35,35 @@ const Item = ({ to, icon: Icon, children }) => (
 
 const LeftBar = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const starredActive = searchParams.get("filter") === "starred";
+
+  const handleNewDocument = async () => {
+    if (!user) return navigate("/login", { state: { from: "/edit" } });
+    try {
+      const { document: doc } = await createDocument({});
+      navigate(`/edit/${doc.id}`);
+    } catch (err) {
+      console.error("Could not create document:", err);
+      navigate("/edit");
+    }
+  };
 
   return (
     <aside className="bg-cream/60 border-r border-line w-60 shrink-0 hidden md:flex flex-col justify-between px-3 py-4 overflow-y-auto">
       <div>
         <SectionLabel>Workspace</SectionLabel>
         <nav className="flex flex-col gap-0.5">
-          <Item to="/edit" icon={FiEdit3}>Editor</Item>
-          <button className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-ink-soft hover:bg-cream hover:text-ink transition-colors text-left">
+          <NavLink to="/" end className={() => itemClass(!starredActive && !searchParams.get("q"))}>
+            <FiHome className="text-base shrink-0" />
+            All documents
+          </NavLink>
+          <NavLink to="/?filter=starred" className={() => itemClass(starredActive)}>
             <FiStar className="text-base shrink-0" />
             Starred
-          </button>
-          <button className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-ink-soft hover:bg-cream hover:text-ink transition-colors text-left">
-            <FiSettings className="text-base shrink-0" />
-            Settings
-          </button>
+          </NavLink>
+          <Item to="/edit" icon={FiEdit3}>Editor</Item>
         </nav>
 
         <SectionLabel>AI tools</SectionLabel>
@@ -71,7 +84,7 @@ const LeftBar = () => {
         </NavLink>
 
         <button
-          onClick={() => navigate("/edit")}
+          onClick={handleNewDocument}
           className="bg-ink text-paper flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-medium transition-all hover:bg-rust hover:shadow-lift active:scale-[0.98]"
         >
           <FiPlus className="text-lg" />

@@ -13,6 +13,8 @@ const { requireAuth } = await import("./middleware/auth.js");
 const { default: authRoutes } = await import("./routes/auth.js");
 const { default: nlpRoutes } = await import("./routes/nlp.js");
 const { default: uploadRoutes } = await import("./routes/upload.js");
+const { default: documentRoutes } = await import("./routes/documents.js");
+const { default: helpRoutes } = await import("./routes/help.js");
 
 if (!process.env.GROQ_API_KEY) {
   console.error("❌ Missing GROQ_API_KEY in .env — the NLP features will not work without it.");
@@ -50,10 +52,12 @@ app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok", uptime: process.uptime() });
 });
 
-// Routes — AI and upload endpoints require a logged-in user
+// Routes — AI, upload, and document endpoints require a logged-in user
 app.use("/api/auth", authRoutes);
 app.use("/api/nlp", requireAuth, nlpRoutes);
 app.use("/api/upload", requireAuth, uploadRoutes);
+app.use("/api/documents", requireAuth, documentRoutes);
+app.use("/api/help", helpRoutes);
 
 // 404 handler
 app.use((req, res) => {

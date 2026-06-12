@@ -37,6 +37,7 @@ function App() {
           <Route path="/signup" element={<AuthPage mode="signup" />} />
           <Route path="/help" element={<GetHelp />} />
           <Route path="/edit" element={<RequireAuth><Edit /></RequireAuth>} />
+          <Route path="/edit/:id" element={<RequireAuth><Edit /></RequireAuth>} />
           <Route path="/rewrite" element={<RequireAuth><Rewrite /></RequireAuth>} />
           <Route path="/summarise" element={<RequireAuth><Summarise /></RequireAuth>} />
           <Route path="/grammar" element={<RequireAuth><GrammarCheck /></RequireAuth>} />

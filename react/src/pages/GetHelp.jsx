@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_BASE } from '../config';
 import { ToolShell, Panel, PrimaryButton, inputClass, textareaClass } from '../components/ToolShell';
 
 const GetHelp = () => {
@@ -6,17 +7,32 @@ const GetHelp = () => {
   const [message, setMessage] = useState('');
   const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState('');
+  const [sending, setSending] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
+    setSending(true);
 
-    // TODO: connect this with the backend
-    console.log({ subject, message, email });
-    setSubmitted(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/help`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, subject, message }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not send the message.');
 
-    setSubject('');
-    setMessage('');
-    setEmail('');
+      setSubmitted(true);
+      setSubject('');
+      setMessage('');
+      setEmail('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -87,7 +103,11 @@ const GetHelp = () => {
                 />
               </div>
 
-              <PrimaryButton type="submit">Send message</PrimaryButton>
+              {error && <p className="text-sm text-rust-deep">{error}</p>}
+
+              <PrimaryButton type="submit" loading={sending} loadingLabel="Sending…">
+                Send message
+              </PrimaryButton>
             </form>
           </Panel>
         )}
