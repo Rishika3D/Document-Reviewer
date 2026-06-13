@@ -19,13 +19,13 @@ export const listDocuments = ({ search, starred } = {}) => {
   return request(`/api/documents${suffix}`);
 };
 
-export const createDocument = (doc = {}) =>
-  request('/api/documents', { method: 'POST', body: JSON.stringify(doc) });
+export const createDocument = (doc = {}, { keepalive } = {}) =>
+  request('/api/documents', { method: 'POST', body: JSON.stringify(doc), keepalive });
 
 export const getDocument = (id) => request(`/api/documents/${id}`);
 
-export const updateDocument = (id, patch) =>
-  request(`/api/documents/${id}`, { method: 'PUT', body: JSON.stringify(patch) });
+export const updateDocument = (id, patch, { keepalive } = {}) =>
+  request(`/api/documents/${id}`, { method: 'PUT', body: JSON.stringify(patch), keepalive });
 
 export const deleteDocument = (id) =>
   request(`/api/documents/${id}`, { method: 'DELETE' });

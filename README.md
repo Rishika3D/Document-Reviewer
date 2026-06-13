@@ -33,35 +33,43 @@ AI inference runs on [Groq](https://console.groq.com) (Llama 3.3 70B, with autom
 
 ## Run locally
 
+Two terminals during development (Vite proxies `/api` to the backend):
+
 ```bash
+# 1. Backend
 npm install
-cp .env.example .env   # then paste your GROQ_API_KEY
-npm run dev            # or: npm start
+cp .env.example .env          # paste GROQ_API_KEY; JWT_SECRET is auto-generated if you add one
+npm run dev                   # http://localhost:5050
+
+# 2. Frontend (hot reload)
+cd react && npm install && npm run dev   # http://localhost:5173
 ```
 
-Server runs at http://localhost:5050.
+To run the production bundle locally (single service — backend serves the built SPA):
 
-## Deploy (Render / Railway / Fly / Heroku)
+```bash
+npm run build   # installs + builds react/dist
+npm start       # http://localhost:5050 serves both API and app
+```
 
-1. Push this repo to GitHub (node_modules and .env are gitignored).
-2. Create a new **Web Service** from the repo.
-   - Build command: `npm install`
+## Deploy (single service — Render / Railway / Fly / Heroku)
+
+The backend serves the built React app, so you deploy **one** web service — no
+separate frontend host, no CORS or `VITE_API_URL` to configure.
+
+1. Push this repo to GitHub (`node_modules`, `.env`, and `data/` are gitignored).
+2. Create a **Web Service** from the repo:
+   - Build command: `npm install && npm run build`
    - Start command: `npm start`
 3. Set environment variables:
    - `GROQ_API_KEY` (required)
    - `JWT_SECRET` (required) — generate with `openssl rand -hex 32`
-   - `ALLOWED_ORIGINS` — your frontend URL(s), comma-separated (recommended; CORS is open to all origins if unset)
-   - `DB_PATH` — optional; point at a persistent disk so user accounts survive redeploys (SQLite defaults to `./data/app.db`, which is ephemeral on most free tiers)
-4. The platform sets `PORT` automatically; the server binds `0.0.0.0` and handles SIGTERM gracefully.
-5. Point the frontend at the deployed URL by setting `VITE_API_URL` in the React app's env.
+   - `DB_PATH` — optional; point at a persistent disk so accounts/documents
+     survive redeploys (SQLite defaults to `./data/app.db`, ephemeral on most free tiers)
+   - `ALLOWED_ORIGINS` — only needed if you host the frontend on a *different*
+     origin; same-origin (the default single-service setup) needs nothing.
+4. The platform sets `PORT` automatically; the server binds `0.0.0.0`, gzips
+   responses, sets security headers, and handles SIGTERM gracefully.
 
-## Frontend
-
-The React app lives in `react/`:
-
-```bash
-cd react
-npm install
-echo "VITE_API_URL=http://localhost:5050" > .env   # or your deployed backend URL
-npm run dev
-```
+The SPA falls back to `index.html` for client-side routes, so deep links like
+`/edit/42` work on refresh.

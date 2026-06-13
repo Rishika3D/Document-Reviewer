@@ -8,7 +8,8 @@
   },
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "build": "npm install --prefix react && npm run build --prefix react"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -16,6 +17,7 @@
     "axios": "^1.13.1",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.10.0",
+    "compression": "^1.8.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",

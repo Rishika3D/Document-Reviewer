@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useTransition, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useQuill } from 'react-quilljs';
 import 'quill/dist/quill.snow.css';
 import NavSum from '../components/NavSum';
@@ -15,9 +15,24 @@ const pastelColors = ["#f6d9cb", "#f3e6c4", "#e3e9cd", "#d7e4dc", "#dce3ee", "#e
 
 const SAVE_DEBOUNCE_MS = 1200;
 
+// Stable, module-level config. Cmd/Ctrl+B/I/U are handled by Quill natively,
+// so no custom keyboard bindings are needed (the old ones referenced `quill`
+// before it existed and force-applied formatting without toggling).
+const editorModules = {
+  toolbar: {
+    container: [
+      [{ header: [1, 2, false] }],
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ list: 'ordered' }, { list: 'bullet' }],
+      ['link', 'image'],
+      [{ background: pastelColors }],
+      ['clean'],
+    ],
+  },
+};
+
 export default function Edit() {
   const { id } = useParams();
-  const navigate = useNavigate();
 
   const [title, setTitle] = useState('Untitled document');
   const [loading, setLoading] = useState(false);
@@ -34,71 +49,71 @@ export default function Edit() {
   const docIdRef = useRef(null);
   const titleRef = useRef(title);
   const saveTimer = useRef(null);
+  const dirtyRef = useRef(false);        // unsaved changes pending?
+  const createPromiseRef = useRef(null); // in-flight create, guards duplicates
+  const mountedRef = useRef(true);
 
-  const modules = {
-    toolbar: {
-      container: [
-        [{ header: [1, 2, false] }],
-        ['bold', 'italic', 'underline', 'strike'],
-        [{ list: 'ordered' }, { list: 'bullet' }],
-        ['link', 'image'],
-        [{ background: pastelColors }],
-        ['clean'],
-      ],
-    },
-    keyboard: {
-      bindings: {
-        bold: { key: 'B', shortKey: true, handler: () => quill.format('bold', true) },
-        italic: { key: 'I', shortKey: true, handler: () => quill.format('italic', true) },
-        underline: { key: 'U', shortKey: true, handler: () => quill.format('underline', true) },
-      },
-    },
-  };
+  const { quill, quillRef } = useQuill({ theme: 'snow', modules: editorModules, placeholder: 'Start writing…' });
 
-  const { quill, quillRef } = useQuill({ theme: 'snow', modules, placeholder: 'Start writing…' });
+  // Persist the current state. Lazily creates the document on the first real
+  // edit (so visiting /edit and leaving never leaves an empty junk document).
+  const save = ({ keepalive = false } = {}) => {
+    if (!quill || !dirtyRef.current) return;
+    const payload = { title: titleRef.current, content: quill.root.innerHTML };
+    dirtyRef.current = false;
+    const setIfMounted = (fn) => { if (mountedRef.current) fn(); };
 
-  const scheduleSave = () => {
-    setSaveState('saving');
-    clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
-      if (!docIdRef.current || !quill) return;
+    (async () => {
       try {
-        await updateDocument(docIdRef.current, {
-          title: titleRef.current,
-          content: quill.root.innerHTML,
-        });
-        setSaveState('saved');
-        setSavedAt(new Date());
+        if (docIdRef.current) {
+          await updateDocument(docIdRef.current, payload, { keepalive });
+        } else {
+          if (!createPromiseRef.current) createPromiseRef.current = createDocument(payload, { keepalive });
+          const { document: doc } = await createPromiseRef.current;
+          docIdRef.current = doc.id;
+          // Reflect the new id in the URL without remounting / reloading
+          window.history.replaceState(window.history.state, '', `/edit/${doc.id}`);
+        }
+        setIfMounted(() => { setSaveState('saved'); setSavedAt(new Date()); });
       } catch (err) {
         console.error('Save failed:', err);
-        setSaveState('error');
+        createPromiseRef.current = null;
+        dirtyRef.current = true; // allow a later retry
+        setIfMounted(() => setSaveState('error'));
       }
-    }, SAVE_DEBOUNCE_MS);
+    })();
   };
 
-  // Load the document (or create a fresh one when visiting /edit)
+  const scheduleSave = () => {
+    dirtyRef.current = true;
+    setSaveState('saving');
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => save(), SAVE_DEBOUNCE_MS);
+  };
+
+  // Load an existing document. New documents are created lazily on first edit.
   useEffect(() => {
     if (!quill) return;
+    if (!id) {
+      // Fresh blank draft — nothing to load, nothing created yet.
+      docIdRef.current = null;
+      setSaveState('idle');
+      return;
+    }
     let cancelled = false;
 
     (async () => {
       try {
-        if (id) {
-          const { document: doc } = await getDocument(id);
-          if (cancelled) return;
-          docIdRef.current = doc.id;
-          titleRef.current = doc.title;
-          setTitle(doc.title);
-          if (quill.root.innerHTML !== doc.content) {
-            quill.root.innerHTML = doc.content || '';
-          }
-          setSaveState('saved');
-          setSavedAt(doc.updatedAt ? new Date(doc.updatedAt + 'Z') : null);
-        } else {
-          const { document: doc } = await createDocument({});
-          if (cancelled) return;
-          navigate(`/edit/${doc.id}`, { replace: true });
+        const { document: doc } = await getDocument(id);
+        if (cancelled) return;
+        docIdRef.current = doc.id;
+        titleRef.current = doc.title;
+        setTitle(doc.title);
+        if (quill.root.innerHTML !== doc.content) {
+          quill.root.innerHTML = doc.content || '';
         }
+        setSaveState('saved');
+        setSavedAt(doc.updatedAt ? new Date(doc.updatedAt + 'Z') : null);
       } catch (err) {
         console.error('Could not load document:', err);
         if (!cancelled) setSaveState('error');
@@ -129,8 +144,23 @@ export default function Edit() {
       }
     });
 
-    return () => clearTimeout(saveTimer.current);
+    // Best-effort flush if the tab is closed/refreshed mid-edit
+    const handleBeforeUnload = () => { if (dirtyRef.current) save({ keepalive: true }); };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      clearTimeout(saveTimer.current);
+      // Flush any pending change on SPA navigation away (page still alive)
+      if (dirtyRef.current) save();
+    };
   }, [quill]);
+
+  // Track mount status so async saves don't setState after unmount
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const handleTitleChange = (e) => {
     setTitle(e.target.value);

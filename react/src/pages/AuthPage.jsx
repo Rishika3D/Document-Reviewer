@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { inputClass } from '../components/ToolShell';
 
 // One page, two modes: /login and /signup
 const AuthPage = ({ mode }) => {
   const isSignup = mode === 'signup';
-  const { login, signup } = useAuth();
+  const { user, login, signup } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -17,6 +17,9 @@ const AuthPage = ({ mode }) => {
   const [loading, setLoading] = useState(false);
 
   const from = location.state?.from || '/';
+
+  // Already signed in — no reason to show the auth form
+  if (user) return <Navigate to={from} replace />;
 
   const handleSubmit = async (e) => {
     e.preventDefault();

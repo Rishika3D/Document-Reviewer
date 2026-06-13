@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import LeftBar from "../components/LeftBar";
 import { useAuth } from "../auth";
-import { listDocuments, createDocument, updateDocument, deleteDocument } from "../documents";
+import { listDocuments, updateDocument, deleteDocument } from "../documents";
 import {
   FiEdit3,
   FiFileText,
@@ -72,14 +72,8 @@ function DocumentList({ search, starredOnly }) {
 
   useEffect(refresh, [search, starredOnly]);
 
-  const handleNew = async () => {
-    try {
-      const { document: doc } = await createDocument({});
-      navigate(`/edit/${doc.id}`);
-    } catch (e) {
-      setError(e.message);
-    }
-  };
+  // Document is created lazily on the first edit (see Edit.jsx)
+  const handleNew = () => navigate("/edit");
 
   const toggleStar = async (doc) => {
     // Optimistic flip

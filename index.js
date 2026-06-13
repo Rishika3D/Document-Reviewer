@@ -1,14 +1,18 @@
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 
+const baseDir = path.dirname(fileURLToPath(import.meta.url));
+
 // Load .env from this file's directory so the server works regardless of
 // which directory it is launched from.
-dotenv.config({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), ".env") });
+dotenv.config({ path: path.join(baseDir, ".env") });
 
 const { default: helmet } = await import("helmet");
+const { default: compression } = await import("compression");
 const { requireAuth } = await import("./middleware/auth.js");
 const { default: authRoutes } = await import("./routes/auth.js");
 const { default: nlpRoutes } = await import("./routes/nlp.js");
@@ -39,15 +43,16 @@ app.use(
   })
 );
 
-// Security headers (CSP off — this is a JSON API, not a page server)
-app.use(helmet({ contentSecurityPolicy: false }));
+// Security headers. CSP is disabled because the bundled SPA and Google Fonts
+// would otherwise need an explicit policy; safe for this single-app setup.
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+
+// Gzip responses (API JSON and static assets)
+app.use(compression());
 
 app.use(express.json({ limit: "2mb" }));
 
 // Health check (used by deployment platforms)
-app.get("/", (req, res) => {
-  res.status(200).json({ status: "ok", service: "document-reviewer-backend" });
-});
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok", uptime: process.uptime() });
 });
@@ -59,7 +64,26 @@ app.use("/api/upload", requireAuth, uploadRoutes);
 app.use("/api/documents", requireAuth, documentRoutes);
 app.use("/api/help", helpRoutes);
 
-// 404 handler
+// Serve the built frontend (single-service deploy). In development this
+// directory doesn't exist and the SPA is served by Vite instead.
+const clientDist = path.join(baseDir, "react", "dist");
+if (fs.existsSync(path.join(clientDist, "index.html"))) {
+  app.use(express.static(clientDist));
+  // SPA fallback: any non-API GET returns index.html so client routes work
+  app.use((req, res, next) => {
+    if (req.method !== "GET" || req.path.startsWith("/api") || req.path === "/health") {
+      return next();
+    }
+    res.sendFile(path.join(clientDist, "index.html"));
+  });
+} else {
+  // Dev/health convenience when the frontend isn't built
+  app.get("/", (req, res) => {
+    res.status(200).json({ status: "ok", service: "document-reviewer-backend" });
+  });
+}
+
+// 404 handler (only reached for unmatched API routes)
 app.use((req, res) => {
   res.status(404).json({ error: `Route not found: ${req.method} ${req.path}` });
 });

@@ -1,7 +1,6 @@
 import React from "react";
 import { NavLink, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth";
-import { createDocument } from "../documents";
 import {
   FiEdit3,
   FiFileText,
@@ -39,15 +38,11 @@ const LeftBar = () => {
   const [searchParams] = useSearchParams();
   const starredActive = searchParams.get("filter") === "starred";
 
-  const handleNewDocument = async () => {
+  // Open a blank editor; the document is created lazily on the first edit,
+  // so clicking "New document" and leaving never creates an empty junk doc.
+  const handleNewDocument = () => {
     if (!user) return navigate("/login", { state: { from: "/edit" } });
-    try {
-      const { document: doc } = await createDocument({});
-      navigate(`/edit/${doc.id}`);
-    } catch (err) {
-      console.error("Could not create document:", err);
-      navigate("/edit");
-    }
+    navigate("/edit");
   };
 
   return (
